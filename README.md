@@ -1,0 +1,2 @@
+# Characteristics-of-Fresh-Food-E-commerce-in-Guangdong-Province-at-District-County-Level
+By crawling the location data of fresh food e-commerce on Baidu Map， combining with the population and economic indicators, conducting K-means clustering analysis， this paper identifies the characteristics of fresh food e-commerce in districts of Guangdong Province, and provides suggestions for the regional refinement development of fresh e-commerce
