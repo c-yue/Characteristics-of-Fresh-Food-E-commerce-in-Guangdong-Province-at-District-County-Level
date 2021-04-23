@@ -1,0 +1,287 @@
+install.packages('openxlsx')
+install.packages('dplyr')
+install.packages('Hmisc')
+install.packages('acepack')
+install.packages('sqldf')
+library(openxlsx)
+library(dplyr)
+library(Hmisc)
+library(ggplot2)
+library(sqldf)
+
+
+
+base_index_x <- read.xlsx('0812 base index end.xlsx',sheet = 1)
+test_index_x <- read.xlsx('0812 test index end.xlsx',sheet = 1)
+local_base_index_x <- read.xlsx('00 local base index.xlsx',sheet = 1)
+local_test_index_x <- read.xlsx('00 local test index.xlsx',sheet = 1)
+test_item_first_rise_info_x <- read.xlsx('test_item_first_rise_date.xlsx',sheet = 1)
+
+base_index <- tbl_df(base_index_x)
+test_index <- tbl_df(test_index_x)
+local_base_index <- tbl_df(local_base_index_x)
+local_test_index <- tbl_df(local_test_index_x)
+test_item_first_rise_info <- tbl_df(test_item_first_rise_info_x)
+
+compre <- 
+  test_index %>%
+  left_join(base_index, by = c("itemid", "modelid")) %>%
+  left_join(local_test_index, by = c('grass_region','grass_date')) %>%
+  left_join(local_base_index,by = 'grass_region') %>%
+  left_join(test_item_first_rise_info,by = c("itemid", "modelid"))
+
+compre$days_from_first_rise <- ifelse(
+  as.Date(compre$grass_date) - as.Date(compre$first_rise_date) < 0, -1,
+  as.Date(compre$grass_date) - as.Date(compre$first_rise_date)
+)
+
+write.csv(compre,"compre.csv", row.names=F)
+
+
+
+# 选取用于计算local_index的local_item样本
+
+# test_local_item_x <- read.xlsx('0818 test_local_item.xlsx',sheet = 1)
+# test_local_item_tbl <- tbl_df(test_local_item_x)
+# test_local_item_sample1 <- test_local_item_tbl[sample(c(1:279449),size=20000),]
+# test_local_item_sample2 <- test_local_item_tbl[sample(c(1:279449),size=20000),]
+# test_local_item_sample3 <- test_local_item_tbl[sample(c(1:279449),size=20000),]
+# write.csv(test_local_item_sample1,"test_local_item_sample1.csv", row.names=F)
+# write.csv(test_local_item_sample2,"test_local_item_sample2.csv", row.names=F)
+# write.csv(test_local_item_sample3,"test_local_item_sample3.csv", row.names=F)
+
+
+
+
+#读取处理后的文件,发现version2不好用，决定后续直接用compre来更新
+#version2 <- read.xlsx('0820 Price Elasticity V7 需确定某些字段.xlsx',sheet = 1)
+#version2 <- tbl_df(version2)
+
+#删除原ado
+compre_dlt_old_ado <- compre[,c(-10,-11,-23,-24,-27,-28,-31,-32)]
+
+#补ado
+base_ado_x <- read.xlsx('0823 base ado update.xlsx',sheet = 1)
+test_ado_x <- read.xlsx('0823 test ado update.xlsx',sheet = 1)
+base_ado <- tbl_df(base_ado_x)
+test_ado <- tbl_df(test_ado_x)
+
+local_base_ado_x <- read.xlsx('0823 00 local base ado.xlsx',sheet = 1)
+local_test_ado_x <- read.xlsx('0823 00 local test ado.xlsx',sheet = 1)
+local_base_ado <- tbl_df(local_base_ado_x)
+local_test_ado <- tbl_df(local_test_ado_x)
+
+compre_ado_update <- 
+  compre_dlt_old_ado %>%
+  left_join(test_ado,by = c("itemid", "modelid", "grass_date")) %>%
+  left_join(base_ado,by = c("itemid", "modelid")) %>%
+  left_join(local_test_ado, by = c('grass_region','grass_date')) %>%
+  left_join(local_base_ado,by = 'grass_region') 
+
+compre_v2 <- compre_ado_update
+
+write.csv(compre_v2,"compre_v2.csv", row.names=F)
+
+  
+
+
+#输出的表生成了0820 compre_excel，但是其中的base_price_rank_percent错误
+#故接下啦更新一份小的rank并生成v3
+
+rank_pool <- sqldf('select 
+                      grass_region
+                      ,itemid
+                      ,modelid 
+                      ,base_overall_price
+                    from 
+                      compre_v2
+                    where 
+                      grass_region is not null
+                    group by 
+                      1,2,3,4
+                    ')
+
+rank <- sqldf('select
+                  a.grass_region
+                  ,region_item_num
+                  ,itemid
+                  ,modelid 
+                  ,base_overall_price
+                  ,row_number() over(partition by a.grass_region order by base_overall_price asc) as item_rank
+              from
+                  rank_pool a
+                  left join (select
+                                grass_region
+                                ,count(*) as region_item_num
+                            from
+                                rank_pool
+                            group by 
+                                1
+                            ) b on a.grass_region = b.grass_region
+              ')
+
+rank_pct <- sqldf('
+                  select
+                      grass_region
+                      ,region_item_num
+                      ,itemid
+                      ,modelid 
+                      ,base_overall_price
+                      ,item_rank
+                      ,item_rank*1.000/region_item_num as item_rank_pct
+                      ,floor(item_rank*100*1.000/region_item_num) as item_rank_range
+                  from 
+                      rank
+                  ')
+
+write.csv(rank_pct,"base_price_rank.csv", row.names=F)
+
+rank_processed <- read.xlsx('0825 base_price_rank.xlsx',sheet = 1)
+rank_processed <- tbl_df(rank_processed)
+
+compre_v3 <- read.csv('0824 compre_v2_excel.csv')
+compre_v3 <- tbl_df(compre_v3)
+
+compre_v3 <- sqldf('
+                   select 
+                      a.*
+                      ,b.item_rank_range2
+                   from 
+                      compre_v3 a
+                      left join rank_processed b on a.itemid = b.itemid and a.modelid = b.modelid
+                   ')
+
+write.csv(compre_v3,"compre_v3.csv", row.names=F)
+
+
+
+
+#开始分析啦
+
+compre_end <- read.csv('0826 compre_v3.csv')
+compre_end <- tbl_df(compre_end)
+
+
+#MY的大致状况
+my <- filter(compre_end, grass_region == 'MY')
+
+my_filter <- 
+  my %>%
+  group_by(itemid,modelid) %>%
+  filter(max(days_from_first_rise)>7) 
+
+my_days_elas <- 
+  my_filter %>%
+  select(days_from_first_rise, ctr_elasticity, search_ctr_elasticity, ado_elasticity, ado_uncut_elasticity) %>%
+  group_by(days_from_first_rise) %>%
+  filter(days_from_first_rise>=0) %>%
+  summarise(n=n()
+            ,mean_ctr_ela = mean(ctr_elasticity)
+            ,mean_s_ctr_ela = mean(search_ctr_elasticity)
+            ,mean_ado_ela = mean(ado_elasticity)
+            ,mean_ado_uncut_ela = mean(ado_uncut_elasticity))
+
+par(mfrow = c(2,2))
+
+plot(my_days_elas$days_from_first_rise, my_days_elas$mean_ctr_ela, pch=20)
+abline(lm(my_days_elas$mean_ctr_ela~my_days_elas$days_from_first_rise), col='red')
+
+plot(my_days_elas$days_from_first_rise, my_days_elas$mean_s_ctr_ela, pch=20)
+abline(lm(my_days_elas$mean_s_ctr_ela~my_days_elas$days_from_first_rise), col='red')
+
+plot(my_days_elas$days_from_first_rise, my_days_elas$mean_ado_ela, pch=20)
+abline(lm(my_days_elas$mean_ado_ela~my_days_elas$days_from_first_rise), col='red')
+
+plot(my_days_elas$days_from_first_rise, my_days_elas$mean_ado_uncut_ela, pch=20)
+abline(lm(my_days_elas$mean_ado_uncut_ela~my_days_elas$days_from_first_rise), col='red')
+
+
+#四个站点大致情况
+
+compre_end_filer <- 
+  compre_end %>%
+  group_by(itemid,modelid) %>%
+  filter(max(days_from_first_rise)>7) 
+
+compre_days_elas <- 
+  compre_end_filer %>%
+  select(days_from_first_rise, ctr_elasticity, search_ctr_elasticity, ado_elasticity, ado_uncut_elasticity) %>%
+  group_by(days_from_first_rise) %>%
+  filter(days_from_first_rise>=0) %>%
+  summarise(n=n()
+            ,mean_ctr_ela = mean(ctr_elasticity)
+            ,mean_s_ctr_ela = mean(search_ctr_elasticity)
+            ,mean_ado_ela = mean(ado_elasticity)
+            ,mean_ado_uncut_ela = mean(ado_uncut_elasticity))
+
+par(mfrow = c(2,2))
+
+plot(compre_days_elas$days_from_first_rise, compre_days_elas$mean_ctr_ela, pch=20)
+abline(lm(compre_days_elas$mean_ctr_ela~compre_days_elas$days_from_first_rise), col='red')
+
+plot(compre_days_elas$days_from_first_rise, compre_days_elas$mean_s_ctr_ela, pch=20)
+abline(lm(compre_days_elas$mean_s_ctr_ela~compre_days_elas$days_from_first_rise), col='red')
+
+plot(compre_days_elas$days_from_first_rise, compre_days_elas$mean_ado_ela, pch=20)
+abline(lm(compre_days_elas$mean_ado_ela~compre_days_elas$days_from_first_rise), col='red')
+
+plot(compre_days_elas$days_from_first_rise, compre_days_elas$mean_ado_uncut_ela, pch=20)
+abline(lm(compre_days_elas$mean_ado_uncut_ela~compre_days_elas$days_from_first_rise), col='red')
+
+
+#四个站点价格弹性与价格区间的关系
+
+compre_price_days_elas <- 
+  compre_end_filer %>%
+  select(base_price_range, days_from_first_rise, ctr_elasticity, search_ctr_elasticity, ado_elasticity, ado_uncut_elasticity) %>%
+  group_by(base_price_range, days_from_first_rise) %>%
+  filter(days_from_first_rise>=0 & days_from_first_rise<=11) %>%
+  summarise(n=n()
+            ,mean_ctr_ela = mean(ctr_elasticity)
+            ,mean_s_ctr_ela = mean(search_ctr_elasticity)
+            ,mean_ado_ela = mean(ado_elasticity)
+            ,mean_ado_uncut_ela = mean(ado_uncut_elasticity)) %>%
+  arrange(base_price_range, days_from_first_rise)
+
+par(mfrow = c(3,7))
+
+for(i in split(compre_price_days_elas,compre_price_days_elas$base_price_range))
+  {
+    plot(i$days_from_first_rise, i$mean_ctr_ela, ylim = c(-0.5,0.5), pch=20)
+    abline(lm(i$mean_ctr_ela~i$days_from_first_rise), col='red')
+    lines(0)
+    title(i[1,1])
+    legend('topleft', legend = max(i[,3]))
+  }
+
+# <- 
+#  compre %>%
+#  select(category,star) %>%
+#  group_by(category) %>%
+#  summarize(star_mean = mean(star), star_median = median(star), n = n()) %>%
+#  filter(!is.na(category))
+
+#ggplot(data=compre, mapping=aes(x=days_from_first_rise,y=test_date_price))+
+#  geom_bar(stat="identity",width=0.5, color='black',fill='lightblue')+
+#  geom_text(aes(label=round(star_mean,2)), vjust=-0.3, color="black", size=3.5)+
+#  coord_cartesian(ylim = c(4.5,5))+
+#  theme(axis.line = element_line(size=1, colour = "black"),
+#        axis.text.x = element_text(family = "myFont", vjust = 0.5, hjust = 0.5, angle = 45))  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,22 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1618172260642.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "0",
+    "id" : "99185C4E",
+    "lastKnownWriteTime" : 1618178696,
+    "last_content_update" : 1618178696290,
+    "path" : "F:/美团商分赛/analyze/exploration.R",
+    "project_path" : "exploration.R",
+    "properties" : {
+        "cursorPosition" : "199,42",
+        "scrollLine" : "182"
+    },
+    "relative_order" : 1,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_source"
+}

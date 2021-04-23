@@ -1,0 +1,23 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1618336671348.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "2753561368",
+    "id" : "9142671F",
+    "lastKnownWriteTime" : 1618226919,
+    "last_content_update" : 1618226919,
+    "path" : "F:/美团商分赛/analyze/生鲜赋区.R",
+    "project_path" : "生鲜赋区.R",
+    "properties" : {
+    },
+    "read_only" : false,
+    "read_only_alternatives" : [
+    ],
+    "relative_order" : 1,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_source"
+}
